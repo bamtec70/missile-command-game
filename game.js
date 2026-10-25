@@ -1,4 +1,4 @@
-/* Missile Command tribute - build 2. Hand-made pixel graphics, Web Audio synthesized sound. No ROM/MAME data. */
+/* Missile Command tribute - build 3. Hand-made pixel graphics, Web Audio synthesized sound. No ROM/MAME data. */
 (() => {
 "use strict";
 const W = 256, H = 231, GROUND = 216, STEP = 1000 / 60;
@@ -340,7 +340,25 @@ function line(x0, y0, x1, y1, col) { // pixel trail (Bresenham)
  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1; let e = dx + dy;
  for (let n = 0; n < 600; n++) { g.fillRect(x0, y0, 1, 1); if (x0 === x1 && y0 === y1) break; const e2 = 2 * e; if (e2 >= dy) { e += dy; x0 += sx; } if (e2 <= dx) { e += dx; y0 += sy; } }
 }
-function disc(x, y, r, col) { g.fillStyle = col; for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) { const w = Math.floor(Math.sqrt(Math.max(0, r * r - dy * dy))); if (r * r - dy * dy >= 0) g.fillRect(Math.round(x - w), Math.round(y + dy), w * 2 + 1, 1); } }
+// Hand-drawn stepped explosion outlines: half-widths per row from the top row down to the centre row.
+const BOOM_SHAPES = {
+ 4: [1, 3, 3, 4, 4],
+ 5: [1, 3, 4, 4, 5, 5],
+ 6: [2, 3, 5, 5, 5, 6, 6],
+ 7: [2, 4, 5, 6, 6, 6, 7, 7],
+ 8: [2, 4, 6, 6, 7, 7, 7, 8, 8],
+ 9: [2, 4, 6, 7, 7, 8, 8, 8, 9, 9],
+ 10: [2, 5, 6, 8, 8, 8, 9, 9, 9, 10, 10],
+ 11: [2, 5, 7, 8, 8, 9, 9, 10, 10, 10, 11, 11],
+ 12: [2, 5, 7, 9, 9, 9, 10, 10, 11, 11, 11, 12, 12],
+ 13: [2, 5, 7, 10, 10, 10, 11, 11, 12, 12, 12, 13, 13, 13],
+};
+function disc(x, y, r, col) {
+ g.fillStyle = col; x = Math.round(x); y = Math.round(y);
+ const ri = Math.max(4, Math.round(r)), base = BOOM_SHAPES[Math.min(13, ri)], k = ri > 13 ? ri / 13 : 1;
+ const n = Math.round((base.length - 1) * k);
+ for (let i = 0; i <= n; i++) { const w = Math.round(base[Math.min(base.length - 1, Math.round(i / k))] * k); g.fillRect(x - w, y - n + i, w * 2 + 1, 1); if (i < n) g.fillRect(x - w, y + n - i, w * 2 + 1, 1); }
+}
 function drawGround() {
  g.fillStyle = pal.gr; for (let x = 0; x < W; x++) g.fillRect(x, HILL[x], 1, H - HILL[x]);
 }
@@ -493,7 +511,7 @@ function loop(now) {
 resetField(); requestAnimationFrame(loop);
 
 window.MISSILE = {
- build: 2, audio: () => (AC ? AC.state : "none"),
+ build: 3, audio: () => (AC ? AC.state : "none"),
  get state() { return { state, score, wave, mult, high, cities: cities.map(c => c.alive), ammo: bases.map(b => b.ammo), basesAlive: bases.map(b => b.alive), enemies: emis.length, enemyLeft, fliers: fliers.map(f => f.kind), booms: booms.length, pmis: pmis.length, cursor: { x: Math.round(cursor.x), y: Math.round(cursor.y) }, bonusStock, nextBonus, bonus: state === "bonus" ? Object.assign({}, bonusInfo) : null, muted, attractPhase, demo }; },
  entry: () => entry && { pos: entry.pos, letters: entry.chars.map(i => ALPHA[i]).join(""), t: entry.t },
  table: () => table.map(e => e[0] + ":" + e[1]),
