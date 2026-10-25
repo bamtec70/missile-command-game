@@ -1,7 +1,7 @@
-/* Missile Command tribute - build 1. Hand-made pixel graphics, Web Audio synthesized sound. No ROM/MAME data. */
+/* Missile Command tribute - build 2. Hand-made pixel graphics, Web Audio synthesized sound. No ROM/MAME data. */
 (() => {
 "use strict";
-const W = 256, H = 228, GROUND = 212, STEP = 1000 / 60;
+const W = 256, H = 231, GROUND = 216, STEP = 1000 / 60;
 const DEBUG = /[?&]debug/.test(location.search);
 const view = document.getElementById("game"), vctx = view.getContext("2d");
 const buf = document.createElement("canvas"); buf.width = W; buf.height = H;
@@ -63,30 +63,48 @@ const sfx = {
 };
 
 /* ---------- Layout ---------- */
-const BASES_X = [20, 128, 236], CITIES_X = [47, 74, 101, 155, 182, 209];
+const BASES_X = [21, 124, 241], CITIES_X = [45, 69, 93, 158, 182, 207];
 const CURSOR_MIN_Y = 14, CURSOR_MAX_Y = GROUND - 45;
-const HILL = []; // ground height profile (y of top surface per column)
+const HILL = []; // ground surface y per column, from a hand-written list of [x, y] corners
 (function makeGround() {
- for (let x = 0; x < W; x++) {
-  let y = GROUND;
-  for (const bx of BASES_X) { const d = Math.abs(x - bx); if (d < 16) y = Math.min(y, GROUND - 9 + Math.max(0, d - 8)); }
-  for (const cx of CITIES_X) { const d = Math.abs(x - cx); if (d < 9) y = Math.min(y, GROUND - 2); }
-  if (y === GROUND && (x * 7) % 13 === 0) y = GROUND - 1;
-  HILL.push(y);
- }
+ const PTS = [[0,215],[2,214],[4,212],[6,210],[9,207],[11,205],[13,205],[15,207],[28,207],[30,205],[32,205],[34,207],[35,212],[37,215],
+  [53,215],[55,213],[57,212],[59,213],[61,215],[78,215],[80,216],[101,216],[103,215],[106,214],[111,209],[115,206],[117,205],[119,207],
+  [129,207],[131,205],[133,206],[136,212],[140,215],[170,215],[172,212],[192,212],[195,215],[220,215],[223,213],[227,209],[230,207],[232,205],[234,205],[236,207],[247,207],[249,205],[251,205],[253,206],[255,207]];
+ for (let i = 0; i < PTS.length - 1; i++) { const [x0, y0] = PTS[i], [x1, y1] = PTS[i + 1]; for (let x = x0; x < x1; x++) HILL[x] = Math.round(y0 + (y1 - y0) * (x - x0) / (x1 - x0)); }
+ HILL[255] = 207;
 })();
 const BASE_TOP = bx => GROUND - 9;
-const CITY_SPRITE = [ // 13x7, 1=a color, 2=b color, hand-drawn skyline
- "....1........",
- "...111..2....",
- ".1.111.222.1.",
- ".11121.222.11",
- "1112211221111",
- "1212112212121",
- "2222222222222"];
-const RUBBLE = ["..1..1...1...", ".121.11.121.1", "1222122122211"];
-const BOMBER = [ "1......1.", "11....111", ".1111111.", "..11111..", "...1.1..." ];
-const SATELLITE = [ "1.1.1", ".111.", "11211", ".111.", "1.1.1" ];
+const CITY_SPRITE = [ // 16x7 hand-drawn skyline: 1 = dark tone, 2 = light tone
+ ".1........1.....",
+ ".11.....1.1.....",
+ ".11.1..21111.1..",
+ "111111.2211111..",
+ "121121222112112.",
+ "1122122212212211",
+ ".22222111122222."];
+const RUBBLE = ["..1....1..1.....", ".121..11.121.1..", "1222112212221211"];
+const BOMBER = [ // 15x9 hand-drawn bomber, facing right
+ "..........11...",
+ ".........11...1",
+ "........111..11",
+ "....11111111111",
+ "..1111111111111",
+ "1111111111111..",
+ ".......11111...",
+ "........1111...",
+ ".........1111.."];
+const SATELLITE = [ // 11x11 hand-drawn satellite: 1 body, 2 windows, 3 antenna tips
+ "3.........3",
+ ".1.......1.",
+ "..1..111.1.",
+ "...1111111.",
+ "...1111111.",
+ "..1221122111",
+ "..12211221.1",
+ "..1221122111",
+ "...1111111.",
+ "...1111111.",
+ "..1..111..1"];
 
 /* ---------- State ---------- */
 let state = "attract", stateT = 0, attractPhase = 0, frame = 0;
@@ -246,7 +264,7 @@ function update() {
  if (state === "attract") {
   if (stateT === 1) { attractPhase = 0; pal = ATTRACT_PAL; }
   const ph = Math.floor(stateT / 480) % 3; // title / demo / high scores, 8s each
-  if (ph !== attractPhase) { attractPhase = ph; if (ph === 1) { demo = true; resetField(); cfg = waveConfig(irnd(1, 4)); pal = palFor(irnd(1, 6)); mult = 1; enemyLeft = 99; bombsLeft = 0; salvoT = 20; flierT = 200; } else { demo = false; pal = ATTRACT_PAL; emis = []; pmis = []; booms = []; fliers = []; } }
+  if (ph !== attractPhase) { attractPhase = ph; if (ph === 1) { demo = true; resetField(); cfg = waveConfig(irnd(1, 4)); pal = PALS[0]; mult = 1; enemyLeft = 99; bombsLeft = 0; salvoT = 20; flierT = 200; } else { demo = false; pal = ATTRACT_PAL; emis = []; pmis = []; booms = []; fliers = []; } }
   if (demo) { if (--salvoT <= 0) { salvoT = irnd(140, 220); spawnSalvo(); } if (--flierT <= 0) { flierT = irnd(400, 700); spawnFlier(); } demoAI(); updateField(); if (!cities.some(c => c.alive)) resetField(); }
   return;
  }
@@ -311,10 +329,10 @@ function entryLetter(ch) { if (!entryArmed()) return; entry.chars[entry.pos] = A
 /* ---------- Drawing ---------- */
 function px(x, y, c) { g.fillStyle = c; g.fillRect(x | 0, y | 0, 1, 1); }
 function text(s, x, y, col, align = "left", scale = 1) {
- s = String(s).toUpperCase(); const w = s.length * 6 * scale - scale;
+ s = String(s).toUpperCase(); const w = s.length * 8 * scale - scale;
  if (align === "center") x -= w / 2; else if (align === "right") x -= w;
  x = Math.round(x); g.fillStyle = col;
- for (let i = 0; i < s.length; i++) { const gl = FONT[s[i]] || FONT["?"]; for (let r = 0; r < 7; r++) for (let c = 0; c < 5; c++) if (gl[r] & (16 >> c)) g.fillRect(x + (i * 6 + c) * scale, y + r * scale, scale, scale); }
+ for (let i = 0; i < s.length; i++) { const gl = FONT[s[i]] || FONT["?"]; for (let r = 0; r < 7; r++) for (let c = 0; c < 7; c++) { const sc = c === 0 ? 0 : c === 6 ? 4 : c - 1; if (gl[r] & (16 >> sc)) g.fillRect(x + (i * 8 + c) * scale, y + r * scale, scale, scale); } }
 }
 function sprite(rows, x, y, cols) { for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) { const ch = rows[r][c]; if (ch !== ".") px(x + c, y + r, cols[+ch - 1] || cols[0]); } }
 function line(x0, y0, x1, y1, col) { // pixel trail (Bresenham)
@@ -329,56 +347,56 @@ function drawGround() {
 function drawBases() {
  for (const b of bases) {
   if (!b.alive && state !== "attract") continue;
-  const top = BASE_TOP(b.x); const rows = [4, 3, 2, 1]; let k = 0;
-  for (let r = 0; r < 4; r++) for (let i = 0; i < rows[3 - r]; i++) { // pyramid: 1,2,3,4 from top
-   if (k >= b.ammo) break; const n = rows[3 - r], x = b.x - (n - 1) * 2 + i * 4, y = top + 1 + r * 2;
-   g.fillStyle = pal.city[0]; g.fillRect(x, y, 1, 2); g.fillStyle = pal.city[1]; g.fillRect(x - 1, y + 1, 1, 1); g.fillRect(x + 1, y + 1, 1, 1); k++;
+  let k = 0;
+  for (let r = 0; r < 4 && k < b.ammo; r++) for (let i = 0; i <= r && k < b.ammo; i++, k++) { // pyramid 1,2,3,4 from the top
+   const x = b.x - r * 3 + i * 6, y = 209 + r * 3; g.fillStyle = pal.gr === C.b ? pal.en[0] : C.b;
+   g.fillRect(x, y - 2, 1, 2); g.fillRect(x - 1, y, 3, 1); g.fillRect(x - 1, y + 1, 1, 1); g.fillRect(x + 1, y + 1, 1, 1);
   }
-  if (state === "play" || state === "banner") { if (b.ammo === 0) text("OUT", b.x, GROUND + 4, pal.gr === C.b ? C.k : C.b, "center"); else if (b.ammo <= 3) text("LOW", b.x, GROUND + 4, pal.gr === C.b ? C.k : C.b, "center"); }
+  if (state === "play" || state === "banner") { const t = b.ammo === 0 ? "OUT" : b.ammo <= 3 ? "LOW" : ""; if (t) text(t, b.x, 223, pal.gr === C.b ? C.k : C.b, "center"); }
  }
 }
-function drawCities() { for (const c of cities) sprite(c.alive ? CITY_SPRITE : RUBBLE, c.x - 6, c.alive ? GROUND - 9 : GROUND - 5, c.alive ? pal.city : [pal.gr === C.r ? C.y : C.r, C.k]); }
+function drawCities() { for (const c of cities) sprite(c.alive ? CITY_SPRITE : RUBBLE, c.x - 8, c.alive ? HILL[c.x] - 6 : HILL[c.x] - 2, c.alive ? pal.city : [pal.gr === C.r ? C.y : C.r, C.k]); }
 function drawField() {
  for (const m of emis) { line(m.sx, m.sy, m.x, m.y, m.col); if (m.kind === "smart") { g.fillStyle = C.w; g.fillRect(m.x - 1, m.y - 2, 3, 5); g.fillRect(m.x - 2, m.y - 1, 5, 3); g.fillStyle = pal.en[0]; g.fillRect(m.x, m.y - 1, 1, 3); } else px(m.x, m.y, frame % 4 < 2 ? C.w : m.col); }
- for (const p of pmis) { line(p.sx, p.sy, p.x, p.y, pal.pl); px(p.x, p.y, C.w); const c = EXCOL[(frame >> 2) % 7]; px(p.tx - 1, p.ty - 1, c); px(p.tx + 1, p.ty - 1, c); px(p.tx, p.ty, c); px(p.tx - 1, p.ty + 1, c); px(p.tx + 1, p.ty + 1, c); }
- for (const f of fliers) sprite(f.kind === "sat" ? SATELLITE : BOMBER, f.x - 4, f.y - 2, f.kind === "sat" ? [C.y, C.w] : [C.r]);
+ for (const p of pmis) { line(p.sx, p.sy, p.x, p.y, pal.pl); px(p.x, p.y, C.w); const c = EXCOL[(frame >> 2) % 7]; for (let d = -2; d <= 2; d++) { px(p.tx + d, p.ty + d, c); px(p.tx - d, p.ty + d, c); } }
+ for (const f of fliers) { if (f.kind === "sat") sprite(SATELLITE, f.x - 5, f.y - 5, [C.y, C.b, EXCOL[(frame >> 3) % 7]]); else { const R = f.vx > 0 ? BOMBER : BOMBER.map(r => r.split("").reverse().join("")); sprite(R, f.x - 7, f.y - 4, [C.r]); } }
  for (const b of booms) { if ((b.f + 3) % 16 < 2) continue; disc(b.x, b.y, boomR(b.f), EXCOL[(b.f >> 2) % 7]); }
 }
-function drawCursor() { const c = C.b === pal.bg ? C.w : C.b; g.fillStyle = c; g.fillRect(cursor.x - 2, cursor.y, 5, 1); g.fillRect(cursor.x, cursor.y - 2, 1, 5); }
+function drawCursor() { const c = C.b === pal.bg ? C.w : C.b; g.fillStyle = c; g.fillRect(Math.round(cursor.x) - 3, Math.round(cursor.y), 7, 1); g.fillRect(Math.round(cursor.x), Math.round(cursor.y) - 3, 1, 7); }
 function drawHud() {
- text(String(score), 60, 2, C.r, "right"); g.fillStyle = pal.bg === C.b ? C.y : C.b; g.fillRect(63, 4, 3, 3); // player-1 marker
- text(String(high), 128, 2, C.r, "center");
+ text(String(score), 72, 1, C.r, "right"); // player-1 marker: small diamond after the score
+ sprite(["...11", ".1111", "11111", "11111", ".1111", "...11"], 74, 1, [pal.bg === C.b ? C.k : C.b]);
+ text(String(high), 143, 1, C.r, "right");
 }
+function arrows() { g.fillStyle = C.r; for (const c of cities) { const x = c.x, y = 190; g.fillRect(x - 1, y, 3, 3); g.fillRect(x - 3, y + 3, 7, 1); g.fillRect(x - 2, y + 4, 5, 1); g.fillRect(x - 1, y + 5, 3, 1); g.fillRect(x, y + 6, 1, 1); } }
+function groundText(s) { text(s, 128, 223, pal.gr === C.b ? C.k : C.k, "center"); }
 function draw() {
  g.fillStyle = pal.bg; g.fillRect(0, 0, W, H);
  if (state === "attract" && attractPhase === 0) {
-  drawGround(); drawCities(); drawHud();
-  text("MISSILE", 128, 52, C.r, "center", 3); text("COMMAND", 128, 82, C.r, "center", 3);
-  text("DEFEND CITIES", 128, 128, C.b, "center");
-  text("PRESS FIRE OR TAP TO START", 128, 150, frame % 60 < 40 ? C.y : C.b, "center");
-  text("WTP ARCADE TRIBUTE", 128, H - 8, C.b, "center");
+  text("MISSILE", 25, 66, C.r, "left", 4); text("COMMAND", 25, 112, C.r, "left", 4);
+  text("PRESS FIRE OR TAP", 128, 176, frame % 60 < 40 ? C.y : C.b, "center"); text("WTP ARCADE TRIBUTE", 128, 200, C.b, "center");
  } else if (state === "table" || (state === "attract" && attractPhase === 2)) {
   pal = ATTRACT_PAL; drawGround(); drawHud();
-  text("HIGH SCORES", 128, 22, C.b, "center");
-  table.forEach((e, i) => { text(e[1], 84, 36 + i * 10, C.y); text(String(e[0]), 172, 36 + i * 10, C.y, "right"); });
-  text("BONUS CITY EVERY", 98, 148, C.b, "center"); text("10000", 172, 148, C.y, "center"); text("POINTS", 208, 148, C.b, "center");
-  if (state === "attract") text("PRESS FIRE OR TAP TO START", 128, 170, frame % 60 < 40 ? C.y : C.b, "center");
+  text("HIGH SCORES", 128, 14, C.b, "center");
+  table.forEach((e, i) => { text(e[1], 82, 26 + i * 8, C.y); text(String(e[0]), 174, 26 + i * 8, C.y, "right"); });
+  text("BONUS CITY EVERY", 12, 116, C.b); text("10000", 148, 116, C.y); text("POINTS", 196, 116, C.b);
+  if (state === "attract") text("PRESS FIRE OR TAP", 128, 170, frame % 60 < 40 ? C.y : C.b, "center");
  } else if (state === "entry") {
   pal = ATTRACT_PAL; drawGround(); drawHud();
-  text("PLAYER 1", 128, 30, C.b, "center"); text("GREAT SCORE", 128, 50, C.r, "center", 2);
-  text("ENTER YOUR INITIALS", 128, 76, C.b, "center"); text("SPIN BALL TO CHANGE LETTERS", 128, 90, C.b, "center"); text("PRESS ANY FIRE SWITCH TO SELECT", 128, 104, C.b, "center");
-  for (let i = 0; i < 3; i++) { const ch = ALPHA[entry.chars[i]]; const hide = i === entry.pos && (frame >> 3) % 2; if (!hide) text(ch === " " ? "_" : ch, 110 + i * 14, 128, C.y, "left", 2); }
+  text("PLAYER  1", 128, 64, C.b, "center"); text("1", 160, 64, C.r); text("G R E A T   S C O R E", 128, 79, C.b, "center");
+  text("ENTER YOUR INITIALS", 128, 92, C.b, "center"); text("SPIN BALL TO CHANGE LETTERS", 128, 105, C.b, "center"); text("PRESS ANY FIRE SWITCH TO SELECT", 128, 118, C.b, "center");
+  for (let i = 0; i < 3; i++) { const ch = ALPHA[entry.chars[i]]; const hide = i === entry.pos && (frame >> 3) % 2; if (!hide) text(ch === " " ? "_" : ch, 116 + i * 9, 38, C.y, "left"); }
  } else if (state === "theend") {
   drawGround(); drawCities(); drawHud(); for (const b of booms) disc(b.x, b.y, boomR(b.f) * 2.2, EXCOL[(b.f >> 2) % 7]);
   if (stateT > 90) text("THE END", 128, 90, C.r, "center", 3);
  } else {
   drawGround(); drawCities(); drawBases(); drawField(); drawHud();
-  if (state === "attract") { text("DEMO", 128, 30, C.b, "center"); text("PRESS FIRE OR TAP TO START", 128, 40, frame % 60 < 40 ? C.y : C.b, "center"); }
-  if (state === "banner") { text("PLAYER  1", 128, 70, C.b, "center"); text(mult + " X POINTS", 128, 90, C.b, "center"); text(String(mult), 128 - 27, 90, C.r); text("DEFEND CITIES", 128, 150, C.b, "center"); }
+  if (state === "attract") { text("DEFEND", 75, 172, C.b, "center"); text("CITIES", 180, 172, C.b, "center"); arrows(); groundText(frame % 120 < 60 ? "PRESS FIRE OR TAP" : "WTP ARCADE TRIBUTE"); }
+  if (state === "banner") { const nc = pal.bg === C.b ? C.r : C.y; text("PLAYER  ", 90, 86, C.b); text("1", 154, 86, nc); text(String(mult), 90, 117, nc); text("  X POINTS", 90, 117, C.b); }
   if (state === "bonus") {
    const B = bonusInfo; text("BONUS POINTS", 128, 50, C.b, "center");
-   text(String(B.ammoPts), 80, 80, C.r, "right"); for (let i = 0; i < B.ammoN; i++) { g.fillStyle = pal.city[0]; g.fillRect(88 + i * 4, 82, 1, 3); }
-   text(String(B.cityPts), 80, 100, C.r, "right"); for (let i = 0; i < B.cityN; i++) sprite(CITY_SPRITE, 88 + i * 16, 98, pal.city);
+   text(String(B.ammoPts), 80, 80, C.r, "right"); for (let i = 0; i < B.ammoN; i++) { g.fillStyle = pal.city[0]; const x = 90 + i * 5; g.fillRect(x, 80, 1, 2); g.fillRect(x - 1, 82, 3, 1); g.fillRect(x - 1, 83, 1, 1); g.fillRect(x + 1, 83, 1, 1); }
+   text(String(B.cityPts), 80, 100, C.r, "right"); for (let i = 0; i < B.cityN; i++) sprite(CITY_SPRITE, 88 + i * 18, 98, pal.city);
    if (B.bonusCity) text("BONUS CITY", 128, 125, C.b, "center");
   }
   if (state === "play" || state === "banner" || (state === "attract" && demo)) drawCursor();
@@ -475,7 +493,7 @@ function loop(now) {
 resetField(); requestAnimationFrame(loop);
 
 window.MISSILE = {
- build: 1, audio: () => (AC ? AC.state : "none"),
+ build: 2, audio: () => (AC ? AC.state : "none"),
  get state() { return { state, score, wave, mult, high, cities: cities.map(c => c.alive), ammo: bases.map(b => b.ammo), basesAlive: bases.map(b => b.alive), enemies: emis.length, enemyLeft, fliers: fliers.map(f => f.kind), booms: booms.length, pmis: pmis.length, cursor: { x: Math.round(cursor.x), y: Math.round(cursor.y) }, bonusStock, nextBonus, bonus: state === "bonus" ? Object.assign({}, bonusInfo) : null, muted, attractPhase, demo }; },
  entry: () => entry && { pos: entry.pos, letters: entry.chars.map(i => ALPHA[i]).join(""), t: entry.t },
  table: () => table.map(e => e[0] + ":" + e[1]),
