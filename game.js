@@ -137,6 +137,7 @@ function waveConfig(w) {
 }
 let cfg = waveConfig(1);
 function startGame() {
+ if (window.WTPShare) WTPShare.hide();
  holdWave = false; demo = false; score = 0; wave = 1; nextBonus = 10000; bonusStock = 0; resetField(); beginWave();
 }
 function beginWave() {
@@ -310,6 +311,7 @@ function updateBonus() {
 /* ---------- Game over / initials ---------- */
 function qualifies(s) { return s > 0 && s > table[9][0]; }
 function gameOver() {
+ if (window.WTPShare) WTPShare.show(score);
  booms = []; emis = []; pmis = []; fliers = [];
  if (qualifies(score)) { keys.clear(); entry = { chars: [0, 26, 26], pos: 0, t: 0 }; setState("entry"); }
  else { setState("table"); }
